@@ -1,0 +1,35 @@
+# Env / secrets
+.env
+*.local
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Go
+bin/
+*.exe
+*.test
+
+# Expo / React Native
+.expo/
+.expo-shared/
+web-build/
+
+# Docker local volumes
+.data/
+
+# Logs
+*.log
+npm-debug.*
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,70 @@
+// Content Service — quan hệ dữ liệu sâu (lý do chọn NestJS + Prisma).
+// Course 1—n Lesson 1—n Vocabulary; Lesson 1—n Quiz 1—n Question 1—n Option.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CONTENT_DATABASE_URL")
+}
+
+model Course {
+  id        String   @id @default(uuid())
+  title     String
+  language  String   // "en", "zh", ...
+  level     String?  // beginner | intermediate | advanced
+  lessons   Lesson[]
+  createdAt DateTime @default(now())
+}
+
+model Lesson {
+  id         String       @id @default(uuid())
+  courseId   String
+  course     Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title      String
+  order      Int          @default(0)
+  vocabulary Vocabulary[]
+  quizzes    Quiz[]
+}
+
+model Vocabulary {
+  id          String  @id @default(uuid())
+  lessonId    String
+  lesson      Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  term        String  // từ cần học
+  reading     String? // pinyin / phiên âm
+  meaning     String  // nghĩa
+  exampleText String?
+}
+
+model Quiz {
+  id        String     @id @default(uuid())
+  lessonId  String
+  lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title     String
+  questions Question[]
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MATCHING
+}
+
+model Question {
+  id       String       @id @default(uuid())
+  quizId   String
+  quiz     Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  type     QuestionType
+  prompt   String
+  vocabId  String? // liên kết tới Vocabulary để SRS biết từ nào (qua event)
+  options  Option[]
+}
+
+model Option {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+}

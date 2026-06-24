@@ -1,0 +1,119 @@
+name: language-app
+
+x-restart: &restart unless-stopped
+
+services:
+  # ───────────────────────── Infra ─────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+      - ./infra/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: *restart
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - ./.data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: *restart
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_HOST_PORT:-15672}:15672"
+    volumes:
+      - ./.data/rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    image: traefik:v3.1
+    restart: *restart
+    command:
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+    ports:
+      - "${GATEWAY_HOST_PORT:-80}:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - ./gateway/traefik/dynamic:/etc/traefik/dynamic:ro
+
+  # ───────────────────────── Services ─────────────────────────
+  auth-service:
+    build: ./services/auth-service
+    restart: *restart
+    env_file: .env
+    environment:
+      PORT: "8001"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  content-service:
+    build: ./services/content-service
+    restart: *restart
+    env_file: .env
+    environment:
+      PORT: "8002"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  progress-service:
+    build: ./services/progress-service
+    restart: *restart
+    env_file: .env
+    environment:
+      PORT: "8003"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  srs-service:
+    build: ./services/srs-service
+    restart: *restart
+    env_file: .env
+    environment:
+      PORT: "8004"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  media-service:
+    build: ./services/media-service
+    restart: *restart
+    env_file: .env
+    environment:
+      PORT: "8005"
+    depends_on:
+      rabbitmq: { condition: service_healthy }

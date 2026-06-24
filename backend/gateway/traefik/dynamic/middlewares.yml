@@ -1,0 +1,11 @@
+# Dynamic config cho Traefik (file provider).
+# jwt-auth: ForwardAuth trỏ về auth-service. auth-service /auth/verify đọc header
+# Authorization, verify JWT, trả 200 + header X-User-Id (được forward xuống service đích)
+# hoặc 401 nếu token sai/thiếu.
+http:
+  middlewares:
+    jwt-auth:
+      forwardAuth:
+        address: "http://auth-service:8001/auth/verify"
+        authResponseHeaders:
+          - "X-User-Id"

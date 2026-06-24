@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://language-app/contracts/user_registered.json",
+  "title": "user_registered",
+  "description": "Phát bởi auth-service khi một user đăng ký thành công.",
+  "type": "object",
+  "required": ["eventId", "userId", "email", "occurredAt"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "userId": { "type": "string" },
+    "email": { "type": "string", "format": "email" },
+    "displayName": { "type": "string" },
+    "occurredAt": { "type": "string", "format": "date-time" }
+  }
+}

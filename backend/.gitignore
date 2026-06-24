@@ -1,0 +1,28 @@
+# Env
+.env
+*.local
+
+# Node (content-service, srs-service)
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Go
+bin/
+*.exe
+*.test
+vendor/
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Data volumes (local)
+.data/

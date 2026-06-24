@@ -1,0 +1,49 @@
+# Routing bằng file provider (không cần Docker socket — chạy ổn trên Docker Desktop/Windows).
+# Service tham chiếu qua tên container + cổng nội bộ (Docker DNS trên mạng chung).
+http:
+  routers:
+    auth:
+      rule: "PathPrefix(`/auth`) || PathPrefix(`/users`)"
+      service: auth
+      entryPoints: [web]
+    content:
+      rule: "PathPrefix(`/courses`) || PathPrefix(`/lessons`) || PathPrefix(`/quizzes`)"
+      service: content
+      entryPoints: [web]
+      middlewares: [jwt-auth]
+    progress:
+      rule: "PathPrefix(`/progress`) || PathPrefix(`/leaderboard`)"
+      service: progress
+      entryPoints: [web]
+      middlewares: [jwt-auth]
+    srs:
+      rule: "PathPrefix(`/srs`)"
+      service: srs
+      entryPoints: [web]
+      middlewares: [jwt-auth]
+    media:
+      rule: "PathPrefix(`/media`)"
+      service: media
+      entryPoints: [web]
+
+  services:
+    auth:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:8001"
+    content:
+      loadBalancer:
+        servers:
+          - url: "http://content-service:8002"
+    progress:
+      loadBalancer:
+        servers:
+          - url: "http://progress-service:8003"
+    srs:
+      loadBalancer:
+        servers:
+          - url: "http://srs-service:8004"
+    media:
+      loadBalancer:
+        servers:
+          - url: "http://media-service:8005"

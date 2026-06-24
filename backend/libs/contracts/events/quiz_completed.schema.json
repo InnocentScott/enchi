@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://language-app/contracts/quiz_completed.json",
+  "title": "quiz_completed",
+  "description": "Phát bởi content-service sau khi chấm điểm một lần nộp quiz.",
+  "type": "object",
+  "required": ["eventId", "submissionId", "userId", "quizId", "lessonId", "results", "occurredAt"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "submissionId": { "type": "string", "format": "uuid", "description": "Khoá dedup theo lần nộp" },
+    "userId": { "type": "string" },
+    "quizId": { "type": "string" },
+    "lessonId": { "type": "string" },
+    "score": { "type": "integer", "minimum": 0, "description": "Số câu đúng" },
+    "total": { "type": "integer", "minimum": 0 },
+    "results": {
+      "type": "array",
+      "description": "Kết quả từng từ vựng — SRS dùng để cập nhật SM-2",
+      "items": {
+        "type": "object",
+        "required": ["vocabId", "correct"],
+        "additionalProperties": false,
+        "properties": {
+          "vocabId": { "type": "string" },
+          "correct": { "type": "boolean" },
+          "quality": { "type": "integer", "minimum": 0, "maximum": 5, "description": "Chất lượng trả lời 0-5 cho SM-2" }
+        }
+      }
+    },
+    "occurredAt": { "type": "string", "format": "date-time" }
+  }
+}

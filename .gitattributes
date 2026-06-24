@@ -1,0 +1,10 @@
+# Chuẩn hoá line ending về LF (tránh churn CRLF trên Windows).
+* text=auto eol=lf
+
+# Scripts giữ LF
+*.sh text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.mp3 binary

@@ -1,0 +1,7 @@
+# Override CHỈ dùng để test trực tiếp service (bỏ qua gateway), publish port ra host.
+# Dùng: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d <service>
+# Không tự nạp khi chạy `docker compose up` thường.
+services:
+  auth-service:
+    ports:
+      - "18001:8001"
