@@ -88,6 +88,8 @@ Point the app at the gateway via `EXPO_PUBLIC_API_URL` (see [`mobile/README.md`]
 Built with ❤️ as a hands-on journey into polyglot microservices and mobile development.
 
 - **GitHub:** [@InnocentScott](https://github.com/InnocentScott)
-- **Email:** _your-email@example.com_ <!-- cập nhật email/LinkedIn của bạn ở đây -->
+- **Email:** [kiethohohoho@gmail.com](mailto:kiethohohoho@gmail.com)
+- **LinkedIn:** [tkietle1002](https://www.linkedin.com/in/tkietle1002/)
+- **Messenger:** [Chat with me](https://www.messenger.com/e2ee/t/6725676397522886)
 
 Issues and pull requests are welcome — feel free to open one if you spot something or want to contribute!
