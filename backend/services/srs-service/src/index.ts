@@ -1,23 +1,47 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import helmet from 'helmet';
+import { loadConfig } from './config';
+import { initPool } from './db/pool';
+import { runMigrations } from './db/migrate';
+import { SrsStore } from './store/srs-store';
+import { SrsService } from './service/srs-service';
+import { startConsumer } from './events/consumer';
+import { buildRoutes } from './http/routes';
+import { errorMiddleware } from './http/error-middleware';
 
-const app = express();
-app.use(express.json());
+async function main() {
+  const cfg = loadConfig();
 
-app.get('/healthz', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', service: 'srs-service' });
+  const pool = initPool(cfg.databaseUrl);
+  await runMigrations(pool);
+
+  const svc = new SrsService(new SrsStore(pool));
+  const consumer = await startConsumer(cfg.rabbitUrl, svc);
+
+  const app = express();
+  app.use(helmet());
+  app.use(express.json({ limit: '1mb' }));
+  app.get('/healthz', (_req, res) => {
+    res.json({ status: 'ok', service: 'srs-service' });
+  });
+  app.use(buildRoutes(svc));
+  app.use(errorMiddleware);
+
+  const server = app.listen(cfg.port, () =>
+    console.log(JSON.stringify({ level: 'info', msg: 'srs-service listening', port: cfg.port })),
+  );
+
+  const shutdown = async () => {
+    await consumer.close();
+    server.close();
+    await pool.end();
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
 });
-
-// Các từ tới hạn ôn hôm nay (due_date <= now). Implement Phase 4.
-app.get('/srs/due', (_req: Request, res: Response) => {
-  res.status(501).json({ code: 'NOT_IMPLEMENTED', message: 'GET /srs/due chưa được implement' });
-});
-
-// Ghi nhận trả lời -> cập nhật SM-2 (xem src/srs/sm2.ts) -> due_date mới. Implement Phase 4.
-app.post('/srs/answer', (_req: Request, res: Response) => {
-  res.status(501).json({ code: 'NOT_IMPLEMENTED', message: 'POST /srs/answer chưa được implement' });
-});
-
-// TODO (Phase 4): consumer RabbitMQ `srs.quiz_completed` -> upsert srs_cards bằng review() từ sm2.ts.
-
-const port = process.env.PORT ?? 8004;
-app.listen(port, () => console.log(`srs-service listening on :${port}`));
