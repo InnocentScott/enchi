@@ -1,22 +1,22 @@
 # media-service (Golang)
 
-Text-to-Speech → cache → Cloudflare R2. **Port:** 8005. Không dùng Postgres (chỉ R2 + cache).
+Text-to-Speech. **Port:** 8005. Không DB/event — leaf service. Route public (không qua jwt-auth).
 
 ## Routes
 | Method | Path | Ghi chú |
 |---|---|---|
 | GET | /healthz | |
-| GET | /media/audio | `?text=&lang=en` → 302 R2 URL hoặc stream |
-| POST | /media/audio/batch | preload audio cho 1 bài học |
+| GET | /media/audio | `?text=&lang=en` → stream audio (`audio/wav`), header `X-Cache: HIT/MISS` |
+| POST | /media/audio/batch | `{items:[{text,lang}]}` → warm cache; trả `{warmed,total}` |
 
 ## TTS provider-agnostic
-`TTSProvider` interface trong `main.go`. Chọn impl qua env `TTS_PROVIDER`:
-- `stub` (mặc định, scaffold) — trả audio giả/silent để dev FE.
-- `google` — Google Cloud Text-to-Speech.
-- `azure` — Azure Speech.
+`internal/tts.Provider` interface; chọn impl qua env `TTS_PROVIDER`:
+- `stub` (mặc định) — sinh WAV sine (tần số theo text) để mobile chạy thử pipeline audio.
+- `google` / `azure` — **chốt sau**; hiện fallback về stub kèm cảnh báo.
 
-> Provider **chốt sau** (Media làm cuối, Phase 5). Scaffold chỉ định nghĩa interface.
+Cache in-memory theo key = `sha256(lang + ":" + text)`. Khi tích hợp thật: thay stub bằng SDK provider + đẩy file lên Cloudflare R2 rồi trả/redirect URL.
 
-## TODO (Phase 5)
-1. `go mod tidy` + Fiber, aws-sdk-go-v2 (R2), SDK provider đã chọn.
-2. Cache key = hash(text+lang); check R2 trước khi gọi TTS.
+## Build / test
+```bash
+go test ./...   # unit test stub (WAV hợp lệ, text khác → tone khác)
+```

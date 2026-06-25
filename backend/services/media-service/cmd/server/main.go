@@ -1,65 +1,53 @@
-// Media Service / Text-to-Speech (Golang) — scaffold.
-// text+lang -> check cache R2 -> (miss) gọi TTS provider, upload R2 -> trả URL.
-// Provider chốt sau: dùng interface TTSProvider (provider-agnostic), env TTS_PROVIDER=stub|google|azure.
+// Media Service / Text-to-Speech (Golang).
+// text+lang -> cache -> (miss) TTS provider sinh audio -> trả bytes. Provider stub (chốt provider sau).
 package main
 
 import (
-	"encoding/json"
-	"log"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/tomovu/enchi/services/media-service/internal/cache"
+	"github.com/tomovu/enchi/services/media-service/internal/config"
+	httpapi "github.com/tomovu/enchi/services/media-service/internal/http"
+	"github.com/tomovu/enchi/services/media-service/internal/tts"
 )
 
-const serviceName = "media-service"
-
-// TTSProvider — interface provider-agnostic. Impl: stubProvider | googleProvider | azureProvider.
-type TTSProvider interface {
-	Synthesize(text, lang string) (audio []byte, contentType string, err error)
-}
-
 func main() {
-	mux := http.NewServeMux()
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "media-service")
 
-	mux.HandleFunc("GET /healthz", health)
-	mux.HandleFunc("GET /media/audio", notImplemented)        // ?text=&lang= -> 302 R2 URL hoặc stream
-	mux.HandleFunc("POST /media/audio/batch", notImplemented) // preload audio cho 1 bài học
+	cfg := config.Load()
+	log.Info("tts provider", "provider", cfg.TTSProvider)
 
-	log.Printf("TTS_PROVIDER=%s", envOr("TTS_PROVIDER", "stub"))
+	provider := tts.New(cfg.TTSProvider, log)
+	router := httpapi.NewRouter(httpapi.NewHandlers(provider, cache.New()), log)
 
-	port := envOr("PORT", "8005")
-	log.Printf("%s listening on :%s", serviceName, port)
-	if err := http.ListenAndServe(":"+port, logRequests(mux)); err != nil {
-		log.Fatal(err)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
-}
+	go func() {
+		log.Info("listening", "port", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server", "err", err)
+			stop()
+		}
+	}()
 
-func health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": serviceName})
-}
-
-func notImplemented(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{
-		"code":    "NOT_IMPLEMENTED",
-		"message": r.Method + " " + r.URL.Path + " chưa được implement",
-	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	<-ctx.Done()
+	log.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown", "err", err)
 	}
-	return fallback
 }
