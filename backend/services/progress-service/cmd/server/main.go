@@ -1,62 +1,88 @@
-// Progress & Leaderboard Service (Golang) — scaffold.
-// XP, streak (Postgres) + leaderboard (Redis Sorted Sets). Consume quiz_completed + user_registered.
+// Progress & Leaderboard Service (Golang).
+// XP + streak (Postgres) + leaderboard (Redis). Consume quiz_completed + user_registered.
 package main
 
 import (
-	"encoding/json"
-	"log"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/tomovu/enchi/services/progress-service/internal/config"
+	"github.com/tomovu/enchi/services/progress-service/internal/events"
+	httpapi "github.com/tomovu/enchi/services/progress-service/internal/http"
+	"github.com/tomovu/enchi/services/progress-service/internal/service"
+	"github.com/tomovu/enchi/services/progress-service/internal/store"
 )
 
-const serviceName = "progress-service"
-
 func main() {
-	mux := http.NewServeMux()
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "progress-service")
 
-	mux.HandleFunc("GET /healthz", health)
-	mux.HandleFunc("GET /progress/me", notImplemented)
-	mux.HandleFunc("GET /progress/{userId}", notImplemented)
-	mux.HandleFunc("GET /leaderboard", notImplemented)
-
-	// TODO: khởi động consumers RabbitMQ trong goroutine:
-	//   - progress.quiz_completed  -> +XP, update streak, ZADD leaderboard:global
-	//   - progress.user_registered -> tạo record user_progress mặc định
-
-	port := envOr("PORT", "8003")
-	log.Printf("%s listening on :%s", serviceName, port)
-	if err := http.ListenAndServe(":"+port, logRequests(mux)); err != nil {
-		log.Fatal(err)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("config", "err", err)
+		os.Exit(1)
 	}
-}
 
-func health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": serviceName})
-}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-func notImplemented(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{
-		"code":    "NOT_IMPLEMENTED",
-		"message": r.Method + " " + r.URL.Path + " chưa được implement",
-	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Error("db connect", "err", err)
+		os.Exit(1)
 	}
-	return fallback
+	defer pool.Close()
+
+	if err := store.RunMigrations(ctx, pool); err != nil {
+		log.Error("migrations", "err", err)
+		os.Exit(1)
+	}
+
+	rdb, err := store.NewRedis(ctx, cfg.RedisURL)
+	if err != nil {
+		log.Error("redis connect", "err", err)
+		os.Exit(1)
+	}
+	defer rdb.Close()
+
+	svc := service.New(store.NewProgressStore(pool), rdb, log)
+
+	consumer, err := events.NewConsumer(cfg.RabbitURL, svc, log)
+	if err != nil {
+		log.Error("rabbitmq connect", "err", err)
+		os.Exit(1)
+	}
+	defer consumer.Close()
+	go func() {
+		if err := consumer.Start(ctx); err != nil {
+			log.Error("consumer", "err", err)
+			stop()
+		}
+	}()
+
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           httpapi.NewRouter(httpapi.NewHandlers(svc), log),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		log.Info("listening", "port", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server", "err", err)
+			stop()
+		}
+	}()
+
+	<-ctx.Done()
+	log.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown", "err", err)
+	}
 }
