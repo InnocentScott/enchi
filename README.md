@@ -79,7 +79,7 @@ npm start                     # open in Expo Go or an emulator
 
 Point the app at the gateway via `EXPO_PUBLIC_API_URL` (see [`mobile/README.md`](./mobile/README.md)).
 
-> **Project status:** under active development. The Auth service is complete and end-to-end tested; the remaining services are being built out following the plans above.
+> **Project status:** all five backend services (auth, content, progress, srs, media) are implemented and verified end-to-end through the gateway, and the mobile app's core flows (auth → courses → lesson → quiz → review/leaderboard/profile) are built and type-checked. See each service's README for what remains to polish.
 
 ---
 

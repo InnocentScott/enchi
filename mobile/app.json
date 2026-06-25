@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "EnChi",
+    "slug": "enchi",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "enchi",
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": { "package": "dev.enchi.app" },
+    "extra": {
+      "apiUrl": "http://localhost:8088"
+    }
+  }
+}
