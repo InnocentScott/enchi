@@ -68,3 +68,16 @@ model Option {
   text       String
   isCorrect  Boolean  @default(false)
 }
+
+// Lưu mỗi lần nộp quiz — cũng là nguồn submissionId cho event quiz_completed.
+model QuizSubmission {
+  id        String   @id @default(uuid())
+  userId    String
+  quizId    String
+  lessonId  String
+  score     Int
+  total     Int
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

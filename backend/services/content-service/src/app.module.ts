@@ -1,11 +1,20 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { validateEnv } from './config/env.validation';
+import { PrismaModule } from './prisma/prisma.module';
+import { EventsModule } from './events/events.module';
+import { CoursesModule } from './courses/courses.module';
+import { QuizModule } from './quiz/quiz.module';
 import { HealthController } from './health/health.controller';
-import { CoursesController } from './courses/courses.controller';
 
 @Module({
   imports: [
-    // TODO (Phase 2): PrismaModule, CoursesModule, LessonsModule, QuizModule, RabbitMQ publisher
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    PrismaModule,
+    EventsModule,
+    CoursesModule,
+    QuizModule,
   ],
-  controllers: [HealthController, CoursesController],
+  controllers: [HealthController],
 })
 export class AppModule {}
