@@ -30,6 +30,8 @@ npm-debug.*
 # OS / editors
 .DS_Store
 Thumbs.db
+# Thư mục rác do biến môi trường Windows không expand (tạo nhầm)
+%ProgramData%/
 .idea/
 .vscode/*
 !.vscode/extensions.json

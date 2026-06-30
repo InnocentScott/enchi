@@ -26,10 +26,25 @@ export function RegisterScreen(_: NativeStackScreenProps<AuthStackParamList, 'Re
   });
 
   const mutation = useMutation({
-    mutationFn: (v: Form) => authApi.register(v.email, v.password, v.displayName),
-    onSuccess: (t) => signIn(t.accessToken, t.refreshToken),
+    mutationFn: (v: Form) => {
+      // [DEBUG] Bắt đầu gọi register.
+      console.log('[register] submit', { email: v.email, displayName: v.displayName });
+      return authApi.register(v.email, v.password, v.displayName);
+    },
+    onSuccess: (t) => {
+      console.log('[register] OK, got tokens');
+      signIn(t.accessToken, t.refreshToken);
+    },
     onError: (e: unknown) => {
-      const status = (e as { response?: { status?: number } })?.response?.status;
+      // [DEBUG] In nguyên lỗi để biết network error hay server error.
+      const err = e as { message?: string; code?: string; response?: { status?: number; data?: unknown } };
+      console.log('[register] ✗ FAILED', {
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      });
+      const status = err?.response?.status;
       setServerError(status === 409 ? 'Email already registered' : 'Could not create account');
     },
   });
