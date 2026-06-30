@@ -1,22 +1,22 @@
 # media-service (Golang)
 
-Text-to-Speech. **Port:** 8005. Không DB/event — leaf service. Route public (không qua jwt-auth).
+Text-to-Speech. **Port:** 8005. No DB/events — a leaf service. Public route (not behind jwt-auth).
 
 ## Routes
-| Method | Path | Ghi chú |
+| Method | Path | Notes |
 |---|---|---|
 | GET | /healthz | |
 | GET | /media/audio | `?text=&lang=en` → stream audio (`audio/wav`), header `X-Cache: HIT/MISS` |
-| POST | /media/audio/batch | `{items:[{text,lang}]}` → warm cache; trả `{warmed,total}` |
+| POST | /media/audio/batch | `{items:[{text,lang}]}` → warm cache; returns `{warmed,total}` |
 
-## TTS provider-agnostic
-`internal/tts.Provider` interface; chọn impl qua env `TTS_PROVIDER`:
-- `stub` (mặc định) — sinh WAV sine (tần số theo text) để mobile chạy thử pipeline audio.
-- `google` / `azure` — **chốt sau**; hiện fallback về stub kèm cảnh báo.
+## Provider-agnostic TTS
+`internal/tts.Provider` interface; pick the impl via the `TTS_PROVIDER` env var:
+- `stub` (default) — generates a WAV sine wave (frequency derived from the text) so mobile can test-drive the audio pipeline.
+- `google` / `azure` — **to be decided later**; currently falls back to the stub with a warning.
 
-Cache in-memory theo key = `sha256(lang + ":" + text)`. Khi tích hợp thật: thay stub bằng SDK provider + đẩy file lên Cloudflare R2 rồi trả/redirect URL.
+In-memory cache keyed by `sha256(lang + ":" + text)`. For real integration: replace the stub with a provider SDK + upload the file to Cloudflare R2, then return/redirect to the URL.
 
 ## Build / test
 ```bash
-go test ./...   # unit test stub (WAV hợp lệ, text khác → tone khác)
+go test ./...   # unit test stub (valid WAV, different text → different tone)
 ```

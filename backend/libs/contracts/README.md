@@ -1,8 +1,8 @@
 # Event Contracts
 
-JSON Schema cho payload các event đi qua RabbitMQ (exchange `learning.events`, type `topic`).
-Là **nguồn chân lý dùng chung** giữa producer và consumer — mọi service phải validate payload
-theo các schema này.
+JSON Schema for the payloads of events flowing through RabbitMQ (exchange `learning.events`, type `topic`).
+This is the **shared source of truth** between producers and consumers — every service must validate payloads
+against these schemas.
 
 | Event | Routing key | Producer | Consumers |
 |---|---|---|---|
@@ -10,10 +10,10 @@ theo các schema này.
 | `quiz_completed`   | `quiz.completed`  | content-service | progress-service, srs-service |
 
 ## Idempotency
-Mỗi message mang `eventId` (uuid). Consumer phải lưu/đối chiếu `eventId` để xử lý **đúng-một-lần**
-(quiz_completed thêm `submissionId` để dedup theo lần nộp bài).
+Each message carries an `eventId` (uuid). Consumers must store/check the `eventId` to process **exactly once**
+(quiz_completed additionally includes `submissionId` to dedup by submission).
 
-## Queue bindings (mỗi consumer 1 queue riêng, có DLQ)
+## Queue bindings (one dedicated queue per consumer, each with a DLQ)
 - `progress.user_registered` ← `user.registered`
 - `progress.quiz_completed`  ← `quiz.completed`
 - `srs.quiz_completed`       ← `quiz.completed`

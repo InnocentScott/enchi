@@ -6,18 +6,18 @@ Whether you are starting from scratch or polishing your conversational skills, E
 
 ### ✨ Key Features
 
-* **Dual-Language Roadmaps:** Follow carefully structured learning paths tailored for both English and Mandarin Chinese, guiding you from absolute beginner to advanced proficiency.
-* **Smart Flashcards (SRS):** Supercharge your vocabulary retention with a **SuperMemo-2 (SM-2)** inspired Spaced Repetition System. The algorithm automatically schedules each word for review at the optimal moment — right before you would forget it.
-* **Interactive Exercises:** Reinforce reading and listening through multiple-choice quizzes, word-matching mini-games, and sentence-building exercises.
-* **Native Audio Pronunciation:** Improve listening comprehension with crystal-clear, high-quality audio for every vocabulary word, Pinyin, and example sentence.
-* **Gamified Experience:** Stay motivated and build consistent habits with daily streaks, experience points (XP), and a competitive weekly leaderboard.
-* **Personalized Notebook:** Bookmark your most challenging words into a custom dictionary for quick, targeted practice.
+* **Dual-Language Roadmaps:** Carefully structured learning paths for both English and Mandarin Chinese, from absolute beginner to advanced.
+* **Smart Flashcards (SRS):** A **SuperMemo-2 (SM-2)** spaced-repetition engine schedules each word for review at the optimal moment — right before you would forget it.
+* **Interactive Exercises:** Multiple-choice quizzes and word-matching to reinforce reading and listening.
+* **Native Audio Pronunciation:** High-quality audio for every vocabulary word, Pinyin, and example sentence.
+* **Gamified Experience:** Daily streaks, experience points (XP), and a competitive leaderboard.
+* **Personalized Notebook:** Bookmark your most challenging words for targeted practice.
 
 ---
 
 ## 🏗️ Architecture (overview)
 
-EnChi is a **monorepo** containing two independent apps:
+EnChi is a **monorepo** with two independent apps:
 
 ```
 enchi/
@@ -27,59 +27,151 @@ enchi/
 
 The backend follows a **pragmatic polyglot microservices** approach — each service is written in the language that best fits its job, owns its **own database** (database-per-service), and is reached by the app through a single **API Gateway**.
 
-| Service | Stack | Responsibility |
-|---|---|---|
-| **auth** | Go | Accounts, login/registration, JWT |
-| **content** | NestJS | Courses, lessons, vocabulary, quizzes |
-| **progress** | Go | XP, streaks, leaderboard (Redis) |
-| **srs** | Express (TS) | Spaced-repetition scheduling (SM-2) |
-| **media** | Go | Text-to-Speech audio (Cloudflare R2) |
+| Service | Stack | Port | Responsibility |
+|---|---|---|---|
+| **auth** | Go | 8001 | Accounts, login/registration, JWT |
+| **content** | NestJS + Prisma | 8002 | Courses, lessons, vocabulary, quizzes |
+| **progress** | Go + Redis | 8003 | XP, streaks, leaderboard |
+| **srs** | Express (TS) | 8004 | Spaced-repetition scheduling (SM-2) |
+| **media** | Go | 8005 | Text-to-Speech audio |
 
 **How they talk to each other:**
-- **Synchronous** calls go through the **API Gateway** (Traefik), which verifies the JWT and forwards the user identity to each service — clients never call a service directly.
-- **Asynchronous** workflows use **RabbitMQ** events. For example, when a quiz is submitted, the Content service emits a `quiz_completed` event; the Progress service consumes it to award XP, and the SRS service consumes it to reschedule the reviewed words.
+- **Synchronous** calls go through the **API Gateway** (Traefik), which verifies the JWT and forwards the user identity (`X-User-Id`) to each service — clients never call a service directly.
+- **Asynchronous** workflows use **RabbitMQ** events. When a quiz is submitted, `content` emits a `quiz_completed` event; `progress` consumes it to award XP/update streaks, and `srs` consumes it to reschedule the reviewed words. Registration emits `user_registered`.
 
-Infrastructure (PostgreSQL, Redis, RabbitMQ, the gateway, and all services) is orchestrated with **Docker Compose**.
+Infrastructure (PostgreSQL, Redis, RabbitMQ, the gateway, all services) is orchestrated with **Docker Compose**.
 
-> Want the full design rationale? See [`implementation_plan_learning_app.md`](./implementation_plan_learning_app.md), [`plan_backend.md`](./plan_backend.md), and [`plan_frontend.md`](./plan_frontend.md).
+> Design rationale: [`implementation_plan_learning_app.md`](./implementation_plan_learning_app.md), [`plan_backend.md`](./plan_backend.md), [`plan_frontend.md`](./plan_frontend.md).
 
 ---
 
-## 🚀 Getting Started
+## 🧰 Prerequisites
 
-### Prerequisites
-- [Docker](https://www.docker.com/) + Docker Compose
-- [Go](https://go.dev/) 1.23+ (for backend service development)
-- [Node.js](https://nodejs.org/) 20+ and [Expo](https://expo.dev/) (for the mobile app)
+Install these once. Commands assume [winget](https://learn.microsoft.com/windows/package-manager/) on Windows and [Homebrew](https://brew.sh/) on macOS.
 
-### 1. Run the backend
+| Tool | Windows | macOS |
+|---|---|---|
+| Git | `winget install Git.Git` | `brew install git` |
+| Docker Desktop | `winget install Docker.DockerDesktop` | `brew install --cask docker` |
+| Go 1.23+ | `winget install GoLang.Go` | `brew install go` |
+| Node.js 20+ | `winget install OpenJS.NodeJS.LTS` | `brew install node` |
+| Expo CLI | used via `npx` (no global install) | used via `npx` |
+
+**Windows note:** Docker Desktop requires WSL2. If it isn't installed, run `wsl --install` in an elevated PowerShell and **reboot**, then start Docker Desktop once.
+
+Open a fresh terminal after installing (so `PATH` updates), then verify: `git --version`, `docker --version`, `go version`, `node --version`.
+
+---
+
+## 🚀 Installation & Running
+
+### 1. Clone
 
 ```bash
-cd backend
-cp .env.example .env          # then edit secrets as needed
-docker compose up -d          # Postgres + Redis + RabbitMQ + gateway + services
-docker compose ps
+git clone <your-repo-url> enchi
+cd enchi
 ```
 
-| Endpoint | URL |
+### 2. Backend (Docker)
+
+**Create the local env file** (holds secrets + host ports; it is gitignored):
+
+- Windows (PowerShell): `Copy-Item backend/.env.example backend/.env`
+- macOS / Linux: `cp backend/.env.example backend/.env`
+
+> **Host ports.** Defaults are the standard ones (gateway `80`, Postgres `5432`, Redis `6379`, RabbitMQ `5672`/`15672`). If any are taken on your machine, edit `backend/.env` and change the `*_HOST_PORT` values. The commands below assume `GATEWAY_HOST_PORT=8088` (set it in `backend/.env`); internal container-to-container ports never change.
+
+**Start the whole stack:**
+
+```bash
+docker compose -f backend/docker-compose.yml up -d --build
+docker compose -f backend/docker-compose.yml ps
+```
+
+This builds and starts PostgreSQL, Redis, RabbitMQ, the Traefik gateway, and all five services. Each service runs its DB migrations on startup.
+
+| Endpoint | URL (with `GATEWAY_HOST_PORT=8088`) |
 |---|---|
-| API Gateway | http://localhost (routes by path, e.g. `/auth/login`, `/courses`) |
-| RabbitMQ management | http://localhost:15672 |
+| API Gateway | http://localhost:8088 |
+| Traefik dashboard | http://localhost:8090 |
+| RabbitMQ management | http://localhost:15673 (guest / guest) |
 
-> If those ports clash with another project on your machine, override the host ports in `backend/.env` (`POSTGRES_HOST_PORT`, `RABBITMQ_HOST_PORT`, `GATEWAY_HOST_PORT`, …) — internal communication is unaffected.
+**Seed sample content** (one English course — run once). Use the same Postgres host port you configured (default `5432`):
 
-### 2. Run the mobile app
+```bash
+cd backend/services/content-service
+npm install
+```
+- Windows (PowerShell):
+  ```powershell
+  $env:CONTENT_DATABASE_URL = "postgres://app:app_password@localhost:5432/content_db?schema=public"; npm run seed
+  ```
+- macOS / Linux:
+  ```bash
+  CONTENT_DATABASE_URL="postgres://app:app_password@localhost:5432/content_db?schema=public" npm run seed
+  ```
+```bash
+cd ../../..
+```
+
+**Smoke test (optional)** — register through the gateway:
+
+```bash
+curl -X POST http://localhost:8088/auth/register -H "Content-Type: application/json" -d "{\"email\":\"me@enchi.dev\",\"password\":\"supersecret123\",\"displayName\":\"Me\"}"
+```
+
+Stop everything with `docker compose -f backend/docker-compose.yml down` (add `-v` to also wipe the local data volumes under `backend/.data/`).
+
+### 3. Mobile (Expo)
 
 ```bash
 cd mobile
-npx create-expo-app@latest . --template blank-typescript   # first-time setup
 npm install
-npm start                     # open in Expo Go or an emulator
 ```
 
-Point the app at the gateway via `EXPO_PUBLIC_API_URL` (see [`mobile/README.md`](./mobile/README.md)).
+Tell the app which gateway URL to call. **`localhost` will NOT work from a phone or emulator** — pick the right host. Expo inlines `EXPO_PUBLIC_*` variables at bundle time, so always restart with `--clear` after changing it.
 
-> **Project status:** all five backend services (auth, content, progress, srs, media) are implemented and verified end-to-end through the gateway, and the mobile app's core flows (auth → courses → lesson → quiz → review/leaderboard/profile) are built and type-checked. See each service's README for what remains to polish.
+| Target | `EXPO_PUBLIC_API_URL` |
+|---|---|
+| Android emulator | `http://10.0.2.2:8088` |
+| iOS simulator | `http://localhost:8088` |
+| Physical device (Expo Go, same Wi‑Fi) | `http://<your-computer-LAN-IP>:8088` |
+
+- Windows (PowerShell):
+  ```powershell
+  $env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:8088"; npx expo start --clear
+  ```
+- macOS / Linux:
+  ```bash
+  EXPO_PUBLIC_API_URL="http://localhost:8088" npx expo start --clear
+  ```
+
+Then scan the QR code with **Expo Go**, or press `a` (Android) / `i` (iOS). Type-check with `npm run typecheck`.
+
+> Find your LAN IP with `ipconfig` (Windows) or `ipconfig getifaddr en0` (macOS). For a physical device, make sure your firewall allows inbound connections on the gateway port, and the backend must be running.
+
+---
+
+## 📁 Repository layout
+
+```text
+enchi/
+├── backend/
+│   ├── docker-compose.yml         # full stack
+│   ├── .env.example               # copy to .env
+│   ├── gateway/traefik/dynamic/   # routes + jwt-auth (file provider)
+│   ├── infra/postgres/            # multi-DB init
+│   ├── libs/contracts/            # event JSON Schemas
+│   └── services/{auth,content,progress,srs,media}-service/
+├── mobile/                        # Expo app (src/{api,features,navigation,store,components,lib})
+├── implementation_plan_learning_app.md
+├── plan_backend.md
+└── plan_frontend.md
+```
+
+## ✅ Project status
+
+All five backend services are implemented and verified end-to-end through the gateway; the mobile app's core flows (auth → courses → lesson → quiz → review / leaderboard / profile) are built and type-checked. Each service's `README.md` lists what remains to polish (e.g. plugging a real TTS provider into `media`, enriching the SRS review screen with vocabulary text, content-admin CRUD, UI polish, i18n).
 
 ---
 

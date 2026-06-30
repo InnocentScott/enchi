@@ -5,39 +5,39 @@ description: Best practices for the EnChi content-service (NestJS + Prisma + Typ
 
 # NestJS Practices (EnChi content-service)
 
-Áp dụng cho `content-service`: Course → Lesson → Vocabulary → Quiz → Question → Option (quan hệ sâu — lý do chọn Nest + Prisma).
+Applies to `content-service`: Course → Lesson → Vocabulary → Quiz → Question → Option (deeply nested relations — the reason Nest + Prisma were chosen).
 
 ## Module structure
-- Một **feature module** mỗi domain: `CoursesModule`, `LessonsModule`, `QuizModule`, `PrismaModule`, `EventsModule`.
-- Phân tầng: **Controller** (HTTP, mỏng) → **Service** (business logic) → **Repository/Prisma** (data). Controller không chứa logic; Prisma không gọi từ controller.
-- DI qua constructor; tránh circular dependency (nếu kẹt, tách shared module — đừng dùng `forwardRef` bừa).
+- One **feature module** per domain: `CoursesModule`, `LessonsModule`, `QuizModule`, `PrismaModule`, `EventsModule`.
+- Layering: **Controller** (HTTP, thin) → **Service** (business logic) → **Repository/Prisma** (data). The controller contains no logic; Prisma is never called from the controller.
+- DI through the constructor; avoid circular dependencies (if stuck, extract a shared module — do not reach for `forwardRef` carelessly).
 
 ## DTO & validation
-- Mọi input có **DTO class** + `class-validator` decorators (`@IsString`, `@IsUUID`, `@IsEnum`, `@ValidateNested`...).
-- `ValidationPipe` global đã bật `whitelist: true, transform: true` (xem `main.ts`) → strip field thừa, ép kiểu. **Không** nhận `any`/`Body()` thô.
-- Response: dùng DTO/serialization (`@Expose`/`ClassSerializerInterceptor`) để không lộ field nội bộ.
+- Every input has a **DTO class** + `class-validator` decorators (`@IsString`, `@IsUUID`, `@IsEnum`, `@ValidateNested`, ...).
+- The global `ValidationPipe` already has `whitelist: true, transform: true` enabled (see `main.ts`) → strips extra fields and coerces types. **Never** accept raw `any`/`Body()`.
+- Response: use a DTO/serialization (`@Expose`/`ClassSerializerInterceptor`) so internal fields are not exposed.
 
 ## Prisma
-- `PrismaService extends PrismaClient` (1 instance, `onModuleInit` connect, `enableShutdownHooks`). Inject vào service, không `new PrismaClient()` rải rác.
-- Tránh **N+1**: dùng `include`/`select` lấy đúng quan hệ cần trong 1 query. Chỉ `select` field cần thiết.
-- Ghi nhiều bảng liên quan → `prisma.$transaction`.
-- Schema thay đổi → `prisma migrate dev` (versioned trong `prisma/migrations`). Không `db push` lên data thật.
-- Lỗi Prisma (`P2002` unique, `P2025` not found) → map sang HTTP đúng ở exception filter, không ném thẳng.
+- `PrismaService extends PrismaClient` (a single instance, connect in `onModuleInit`, `enableShutdownHooks`). Inject it into services; do not scatter `new PrismaClient()` calls.
+- Avoid **N+1**: use `include`/`select` to fetch exactly the relations you need in a single query. Only `select` the fields you need.
+- Writing to multiple related tables → `prisma.$transaction`.
+- Schema change → `prisma migrate dev` (versioned in `prisma/migrations`). Do not `db push` to real data.
+- Prisma errors (`P2002` unique, `P2025` not found) → map to the correct HTTP status in the exception filter; do not throw them straight through.
 
 ## Cross-cutting
-- **Config**: `@nestjs/config` + validate env bằng schema (zod/Joi) lúc broot. Fail-fast nếu thiếu.
-- **Exception filter** global → error envelope `{ code, message, details? }` khớp convention dự án.
-- **Auth**: client đã được gateway verify; đọc `X-User-Id` qua một `@User()` param decorator + guard kiểm tra header tồn tại. Không tự verify JWT lại trong content-service.
-- **Logging**: Nest `Logger`, đính context = tên class. Không log payload nhạy cảm.
+- **Config**: `@nestjs/config` + validate env with a schema (zod/Joi) at boot. Fail-fast if anything is missing.
+- **Exception filter** (global) → error envelope `{ code, message, details? }` matching the project convention.
+- **Auth**: the client has already been verified by the gateway; read `X-User-Id` via a `@User()` param decorator + a guard that checks the header exists. Do not re-verify the JWT inside content-service.
+- **Logging**: Nest `Logger`, with context set to the class name. Do not log sensitive payloads.
 
-## Nghiệp vụ trọng tâm — chấm quiz
-- `POST /quizzes/:id/submit`: validate đáp án → chấm điểm trong **service thuần** (testable) → lưu submission (transaction) → **publish `quiz_completed`** (EventsService, payload khớp `libs/contracts`, có `eventId`+`submissionId`). Publish sau khi commit DB thành công.
+## Core business logic — quiz grading
+- `POST /quizzes/:id/submit`: validate the answers → grade in a **pure service** (testable) → save the submission (in a transaction) → **publish `quiz_completed`** (EventsService, payload matching `libs/contracts`, with `eventId` + `submissionId`). Publish after the DB commit succeeds.
 
 ## RabbitMQ
-- `EventsModule` bọc `amqplib` (hoặc `@golevelup/nestjs-rabbitmq`). Publisher confirm; topic `learning.events`, routing key `quiz.completed`.
+- `EventsModule` wraps `amqplib` (or `@golevelup/nestjs-rabbitmq`). Publisher in confirm mode; topic `learning.events`, routing key `quiz.completed`.
 
 ## Testing
-- Unit: jest + mock service deps (logic chấm điểm test không cần DB). e2e: `@nestjs/testing` + test DB.
+- Unit: jest + mocked service deps (grading logic is tested without a DB). e2e: `@nestjs/testing` + a test DB.
 
-## Anti-patterns (tránh)
-- Logic trong controller; gọi PrismaClient trực tiếp ngoài service; DTO thiếu validator; trả entity Prisma thô ra client; publish event trước khi commit; bắt rồi nuốt lỗi Prisma.
+## Anti-patterns (avoid)
+- Logic in the controller; calling PrismaClient directly outside a service; DTOs without validators; returning raw Prisma entities to the client; publishing an event before the commit; catching and then swallowing Prisma errors.

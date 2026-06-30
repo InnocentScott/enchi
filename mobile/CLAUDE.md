@@ -1,17 +1,17 @@
 # EnChi Mobile — Rules
 
-React Native + Expo (TypeScript). Đọc cùng `../CLAUDE.md`. Thiết kế: `../plan_frontend.md`.
-**Trước khi sửa code, load skill `react-native-expo-practices`** (và `design-taste-frontend` khi làm UI/branding).
+React Native + Expo (TypeScript). Read alongside `../CLAUDE.md`. Design: `../plan_frontend.md`.
+**Before modifying code, load the skill `react-native-expo-practices`** (and `design-taste-frontend` when working on UI/branding).
 
-## Quy tắc bắt buộc
-- **Server state → TanStack Query**; **client state → Zustand**. Không nhét dữ liệu backend vào Zustand.
-- Mọi request qua `src/api/client.ts` (axios + JWT refresh) → API Gateway. Base URL = `EXPO_PUBLIC_API_URL`. Component không gọi axios trực tiếp.
-- Token chỉ lưu `expo-secure-store`. Không log token/PII.
-- TS `strict`, không `any`. Form dùng `react-hook-form` + `zod` (mirror DTO backend).
-- Sau `submitQuiz`: invalidate `['progress','me']`, `['srs','due']`, `['leaderboard']`.
+## Mandatory rules
+- **Server state → TanStack Query**; **client state → Zustand**. Do not stuff backend data into Zustand.
+- All requests go through `src/api/client.ts` (axios + JWT refresh) → API Gateway. Base URL = `EXPO_PUBLIC_API_URL`. Components do not call axios directly.
+- Tokens are stored only in `expo-secure-store`. Do not log tokens/PII.
+- TS `strict`, no `any`. Forms use `react-hook-form` + `zod` (mirror the backend DTOs).
+- After `submitQuiz`: invalidate `['progress','me']`, `['srs','due']`, `['leaderboard']`.
 
-## Tích hợp backend (qua gateway)
-| Màn | Endpoint |
+## Backend integration (via the gateway)
+| Screen | Endpoint |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh` |
 | Courses/Lesson | `GET /courses`, `/lessons/:id` (+ `/media/audio`) |
@@ -20,4 +20,4 @@ React Native + Expo (TypeScript). Đọc cùng `../CLAUDE.md`. Thiết kế: `..
 | Progress/Leaderboard | `GET /progress/me`, `/leaderboard` |
 
 ## Setup
-`npx create-expo-app@latest . --template blank-typescript` rồi cài deps (xem `README.md`). Giữ lại `src/api/client.ts`.
+`npx create-expo-app@latest . --template blank-typescript` then install deps (see `README.md`). Keep `src/api/client.ts`.

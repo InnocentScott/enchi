@@ -1,24 +1,24 @@
 # 📱 EnChi Mobile (React Native + Expo)
 
-Client duy nhất của hệ thống EnChi. Chi tiết kế hoạch: [`../plan_frontend.md`](../plan_frontend.md).
-Backend là repo riêng: [`../backend`](../backend).
+The single client of the EnChi system. Plan details: [`../plan_frontend.md`](../plan_frontend.md).
+The backend is a separate repo: [`../backend`](../backend).
 
-## Chạy
+## Run
 
 ```bash
 cd mobile
 npm install
-# trỏ tới API Gateway. Thiết bị thật/emulator KHÔNG dùng localhost được:
+# point to the API Gateway. A real device/emulator CANNOT use localhost:
 #   - Android emulator:  http://10.0.2.2:8088
-#   - thiết bị thật:     http://<IP-LAN-máy-bạn>:8088
-$env:EXPO_PUBLIC_API_URL = "http://localhost:8088"   # PowerShell (web); hoặc set trong shell tương ứng
-npm start                  # mở bằng Expo Go (QR) / emulator
+#   - real device:       http://<your-machine-LAN-IP>:8088
+$env:EXPO_PUBLIC_API_URL = "http://localhost:8088"   # PowerShell (web); or set it in the corresponding shell
+npm start                  # open with Expo Go (QR) / emulator
 npm run typecheck          # tsc --noEmit
 ```
 
-> Backend phải đang chạy (`cd ../backend && docker compose up -d`). Cổng gateway local mặc định `8088` (xem `backend/.env`).
+> The backend must be running (`cd ../backend && docker compose up -d`). The default local gateway port is `8088` (see `backend/.env`).
 
-## Cấu trúc (`src/`)
+## Structure (`src/`)
 
 ```text
 src/
@@ -30,13 +30,13 @@ src/
 └── lib/            # queryClient, theme, env
 ```
 
-## Nguyên tắc (theo skill `react-native-expo-practices`)
+## Principles (per the `react-native-expo-practices` skill)
 - **Server state → TanStack Query**; **client state (auth) → Zustand**.
-- Mọi request qua `src/api/client.ts` → gateway; token ở `expo-secure-store`; tự refresh khi 401.
-- Sau `submitQuiz`: invalidate `['progress','me']`, `['srs','due']`, `['leaderboard']`.
-- Audio TTS phát bằng `expo-av`, unload khi xong.
+- All requests go through `src/api/client.ts` → gateway; tokens in `expo-secure-store`; auto-refresh on 401.
+- After `submitQuiz`: invalidate `['progress','me']`, `['srs','due']`, `['leaderboard']`.
+- TTS audio plays via `expo-av`, unload when done.
 
-## Còn lại (nâng cấp sau)
-- Màn Review hiện hiển thị theo `vocabId` (SRS chỉ lưu id) — cần thêm endpoint `content` lấy vocab theo ids để hiện từ.
-- Polish UI/animation (streak/XP) — dùng skill `design-taste-frontend` + Reanimated.
-- i18n (i18next) cho song ngữ giao diện.
+## Remaining (future improvements)
+- The Review screen currently displays by `vocabId` (SRS only stores the id) — need to add a `content` endpoint to fetch vocab by ids so the words can be shown.
+- Polish UI/animation (streak/XP) — use the `design-taste-frontend` skill + Reanimated.
+- i18n (i18next) for a bilingual interface.

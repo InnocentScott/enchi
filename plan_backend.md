@@ -1,69 +1,69 @@
-# 🛠️ Plan Backend — App Học Ngôn Ngữ (Polyglot Microservices)
+# 🛠️ Backend Plan — Language Learning App (Polyglot Microservices)
 
-> Bám theo `implementation_plan_learning_app.md`: **Dễ → Golang, Tầm trung → NestJS, Khó → ExpressJS**.
-> Giao tiếp: **REST** (client → service) + **RabbitMQ** (event bất đồng bộ giữa các service).
-> Hạ tầng dùng chung: **PostgreSQL + Redis + RabbitMQ** qua `docker-compose`.
-
----
-
-## 0. Quyết định kiến trúc nền tảng (làm trước tiên)
-
-- **API Gateway / BFF:** Mobile app chỉ nên biết **1 entrypoint**. Đề xuất **Traefik** hoặc **Nginx** reverse-proxy định tuyến theo path (`/auth`, `/content`, `/progress`, `/srs`, `/media`). Gateway xử lý: TLS, rate-limit, và **xác thực JWT tập trung** (forward `X-User-Id` xuống service).
-- **Database per service** (đúng tinh thần microservices): mỗi service một schema/DB Postgres riêng, **không** share bảng. Liên kết dữ liệu qua ID + event, không qua JOIN xuyên service.
-- **Chuẩn chung:** mọi service expose `/healthz`, log có `request_id`, error envelope thống nhất `{ code, message, details }`.
-- **Auth contract:** access token (JWT, ngắn hạn ~15m) + refresh token (dài hạn, lưu DB/Redis để revoke).
+> Following `implementation_plan_learning_app.md`: **Easy → Golang, Medium → NestJS, Hard → ExpressJS**.
+> Communication: **REST** (client → service) + **RabbitMQ** (asynchronous events between services).
+> Shared infrastructure: **PostgreSQL + Redis + RabbitMQ** via `docker-compose`.
 
 ---
 
-## 1. Chi tiết từng Service
+## 0. Foundational architecture decisions (do these first)
 
-### 🟢 Auth & User Service — Golang (Dễ)
-- **Framework:** Fiber hoặc Gin; **sqlc** hoặc GORM; **bcrypt**; **golang-jwt**.
+- **API Gateway / BFF:** The mobile app should only need to know **1 entrypoint**. We propose a **Traefik** or **Nginx** reverse proxy that routes by path (`/auth`, `/content`, `/progress`, `/srs`, `/media`). The gateway handles: TLS, rate limiting, and **centralized JWT authentication** (forwarding `X-User-Id` down to the services).
+- **Database per service** (true to the microservices spirit): each service has its own Postgres schema/DB and does **not** share tables. Data is linked via ID + events, not via cross-service JOINs.
+- **Common standards:** every service exposes `/healthz`, logs include a `request_id`, and a unified error envelope `{ code, message, details }`.
+- **Auth contract:** access token (JWT, short-lived ~15m) + refresh token (long-lived, stored in DB/Redis for revocation).
+
+---
+
+## 1. Per-Service Details
+
+### 🟢 Auth & User Service — Golang (Easy)
+- **Framework:** Fiber or Gin; **sqlc** or GORM; **bcrypt**; **golang-jwt**.
 - **DB (Postgres `auth_db`):** `users(id, email, password_hash, display_name, created_at)`, `refresh_tokens(id, user_id, token_hash, expires_at, revoked)`.
 - **Endpoints:**
   - `POST /auth/register`, `POST /auth/login`
   - `POST /auth/refresh`, `POST /auth/logout`
   - `GET /users/me`, `PATCH /users/me`
-- **Event phát:** `user_registered` (để service khác khởi tạo dữ liệu mặc định, vd. Progress tạo record XP=0).
+- **Event published:** `user_registered` (so other services can initialize default data, e.g. Progress creating an XP=0 record).
 
-### 🟢 Progress & Leaderboard Service — Golang (Dễ)
-- **Framework:** Fiber/Gin; **Redis** (Sorted Sets cho leaderboard); Postgres cho dữ liệu bền.
+### 🟢 Progress & Leaderboard Service — Golang (Easy)
+- **Framework:** Fiber/Gin; **Redis** (Sorted Sets for the leaderboard); Postgres for durable data.
 - **DB (`progress_db`):** `user_progress(user_id, total_xp, current_streak, longest_streak, last_active_date)`, `xp_log(...)`.
-- **Redis:** `ZADD leaderboard:global <xp> <user_id>` → query rank/top-N siêu nhanh.
+- **Redis:** `ZADD leaderboard:global <xp> <user_id>` → blazing-fast rank/top-N queries.
 - **Endpoints:**
   - `GET /progress/me`, `GET /progress/:userId`
   - `GET /leaderboard?scope=global&limit=50`
-- **Event tiêu thụ:** `quiz_completed` → cộng XP, cập nhật streak, `ZADD` leaderboard.
-- **Event tiêu thụ:** `user_registered` → tạo record progress mặc định.
+- **Event consumed:** `quiz_completed` → add XP, update streak, `ZADD` to the leaderboard.
+- **Event consumed:** `user_registered` → create a default progress record.
 
-### 🟢 Media Service (Text-to-Speech) — Golang (Dễ)
-- **Framework:** Fiber/Gin; SDK **Google/Azure TTS**; **Cloudflare R2** (S3-compatible, dùng aws-sdk-go).
-- **Luồng:** nhận `text + lang` → check cache (R2 key = hash) → nếu thiếu thì gọi TTS, nén, upload R2 → trả URL (hoặc stream).
-- **DB/cache:** bảng `audio_cache(hash, lang, r2_key, created_at)` hoặc chỉ check tồn tại trên R2.
+### 🟢 Media Service (Text-to-Speech) — Golang (Easy)
+- **Framework:** Fiber/Gin; **Google/Azure TTS** SDK; **Cloudflare R2** (S3-compatible, using aws-sdk-go).
+- **Flow:** receive `text + lang` → check the cache (R2 key = hash) → if missing, call TTS, compress, upload to R2 → return the URL (or stream).
+- **DB/cache:** an `audio_cache(hash, lang, r2_key, created_at)` table, or simply check for existence on R2.
 - **Endpoints:**
-  - `GET /media/audio?text=...&lang=en` → 302 redirect tới R2 URL **hoặc** stream.
-  - `POST /media/audio/batch` (preload cho 1 bài học).
+  - `GET /media/audio?text=...&lang=en` → 302 redirect to the R2 URL **or** stream.
+  - `POST /media/audio/batch` (preload for a single lesson).
 
-### 🟡 Content Service — NestJS (Tầm trung)
-- **Framework:** NestJS + **Prisma** (hoặc TypeORM); Postgres; **class-validator** cho DTO.
-- **DB (`content_db`) — quan hệ sâu:**
+### 🟡 Content Service — NestJS (Medium)
+- **Framework:** NestJS + **Prisma** (or TypeORM); Postgres; **class-validator** for DTOs.
+- **DB (`content_db`) — deeply relational:**
   - `Course 1—n Lesson 1—n Vocabulary`
   - `Lesson 1—n Quiz`, `Quiz 1—n Question`, `Question 1—n Option` (multiple-choice / matching)
 - **Endpoints:**
   - `GET /courses`, `GET /courses/:id`
-  - `GET /lessons/:id` (kèm vocab)
+  - `GET /lessons/:id` (including vocab)
   - `GET /quizzes/:lessonId`, `POST /quizzes/:id/submit`
-  - CRUD admin cho nội dung (tách guard role admin)
-- **Event phát:** `quiz_completed { userId, quizId, vocabIds[], correctMap }` sau khi chấm điểm → Progress & SRS cùng nhặt.
+  - Admin CRUD for content (gated by a separate admin-role guard)
+- **Event published:** `quiz_completed { userId, quizId, vocabIds[], correctMap }` after grading → picked up by both Progress & SRS.
 
-### 🔴 SRS Service (Spaced Repetition) — ExpressJS (Khó về thuật toán)
-- **Framework:** ExpressJS + TypeScript (tự do code thuật toán **SM-2 / SuperMemo**); Postgres.
+### 🔴 SRS Service (Spaced Repetition) — ExpressJS (Algorithmically hard)
+- **Framework:** ExpressJS + TypeScript (freedom to code the **SM-2 / SuperMemo** algorithm); Postgres.
 - **DB (`srs_db`):** `srs_cards(user_id, vocab_id, ease_factor, interval_days, repetitions, due_date, last_reviewed)`.
-- **Thuật toán SM-2:** dựa vào chất lượng trả lời (0–5) → cập nhật `ease_factor`, `interval`, `due_date`.
+- **SM-2 algorithm:** based on answer quality (0–5) → update `ease_factor`, `interval`, `due_date`.
 - **Endpoints:**
-  - `GET /srs/due?limit=20` → các từ cần ôn hôm nay
-  - `POST /srs/answer { vocabId, quality }` → cập nhật lịch
-- **Event tiêu thụ:** `quiz_completed` → tạo/cập nhật `srs_cards` cho các `vocabIds` (đúng/sai → quality).
+  - `GET /srs/due?limit=20` → the words due for review today
+  - `POST /srs/answer { vocabId, quality }` → update the schedule
+- **Event consumed:** `quiz_completed` → create/update `srs_cards` for the given `vocabIds` (correct/incorrect → quality).
 
 ---
 
@@ -71,26 +71,26 @@
 
 - **Exchange:** `learning.events` (type `topic`).
 - **Routing keys:** `quiz.completed`, `user.registered`.
-- **Queues (mỗi consumer 1 queue, bind riêng):**
+- **Queues (one queue per consumer, each bound separately):**
   - `progress.quiz_completed` ← `quiz.completed`
   - `srs.quiz_completed` ← `quiz.completed`
   - `progress.user_registered` ← `user.registered`
-- **Đảm bảo:** dùng **manual ack**, **DLQ** (dead-letter) cho message lỗi, **idempotency key** (vd. `quizSubmissionId`) để consumer xử lý đúng-một-lần.
+- **Guarantees:** use **manual ack**, a **DLQ** (dead-letter) for failed messages, and an **idempotency key** (e.g. `quizSubmissionId`) so consumers process exactly-once.
 
-**Flow `quiz_completed`:**
+**`quiz_completed` flow:**
 ```
 Mobile → POST /quizzes/:id/submit (Content)
-Content chấm điểm, lưu submission, publish quiz.completed
+Content grades, saves the submission, publishes quiz.completed
    ├─→ Progress: +XP, update streak, ZADD leaderboard
-   └─→ SRS:      update srs_cards (due_date mới theo SM-2)
-Mobile invalidate: progress/me, srs/due, leaderboard
+   └─→ SRS:      update srs_cards (new due_date per SM-2)
+Mobile invalidates: progress/me, srs/due, leaderboard
 ```
 
 ---
 
-## 3. Cấu trúc repo (backend)
+## 3. Repo structure (backend)
 
-> `enchi/` là umbrella chứa 2 repo: `backend/` (file này) và `mobile/` (xem `plan_frontend.md`).
+> `enchi/` is the umbrella containing 2 repos: `backend/` (this file) and `mobile/` (see `plan_frontend.md`).
 
 ```text
 enchi/backend/
@@ -101,63 +101,63 @@ enchi/backend/
 │   ├── content-service/     (NestJS)
 │   └── srs-service/         (ExpressJS)
 ├── libs/
-│   ├── proto-or-contracts/  # JSON schema / OpenAPI cho event payloads dùng chung
-│   └── go-shared/           # middleware JWT, logger, rabbitmq helper (Go)
+│   ├── proto-or-contracts/  # JSON schema / OpenAPI for shared event payloads
+│   └── go-shared/           # JWT middleware, logger, rabbitmq helper (Go)
 ├── gateway/                 # Traefik/Nginx config
 └── docker-compose.yml       # Postgres + Redis + RabbitMQ + 5 services + gateway
 ```
 
 ---
 
-## 4. Lộ trình triển khai (Phases)
+## 4. Implementation roadmap (Phases)
 
-### Phase 0 — Hạ tầng & khung (1 tuần)
+### Phase 0 — Infrastructure & scaffolding (1 week)
 - [ ] `docker-compose`: Postgres, Redis, RabbitMQ (+ management UI), gateway
-- [ ] Chuẩn chung: error envelope, `/healthz`, structured logging, env config
-- [ ] Định nghĩa **event contracts** (`quiz_completed`, `user_registered`) trong `libs/contracts`
-- [ ] Helper RabbitMQ publish/consume (Go + Node)
+- [ ] Common standards: error envelope, `/healthz`, structured logging, env config
+- [ ] Define **event contracts** (`quiz_completed`, `user_registered`) in `libs/contracts`
+- [ ] RabbitMQ publish/consume helpers (Go + Node)
 
-### Phase 1 — Auth Service (1 tuần)
+### Phase 1 — Auth Service (1 week)
 - [ ] register/login/refresh/logout + JWT
-- [ ] Gateway xác thực JWT tập trung, forward `X-User-Id`
+- [ ] Centralized JWT verification at the gateway, forwarding `X-User-Id`
 - [ ] Publish `user_registered`
 
-### Phase 2 — Content Service (1.5 tuần)
-- [ ] Schema Course→Lesson→Vocab→Quiz→Question→Option (Prisma)
-- [ ] Read API cho client + CRUD admin
-- [ ] `POST /quizzes/:id/submit` chấm điểm + publish `quiz_completed`
-- [ ] Seed dữ liệu mẫu (1 khóa English, vài bài + quiz)
+### Phase 2 — Content Service (1.5 weeks)
+- [ ] Course→Lesson→Vocab→Quiz→Question→Option schema (Prisma)
+- [ ] Read API for the client + admin CRUD
+- [ ] `POST /quizzes/:id/submit` grading + publish `quiz_completed`
+- [ ] Seed sample data (1 English course, a few lessons + quizzes)
 
-### Phase 3 — Progress & Leaderboard (1 tuần)
+### Phase 3 — Progress & Leaderboard (1 week)
 - [ ] Consume `quiz_completed` → XP + streak (Postgres) + Redis ZADD
-- [ ] Consume `user_registered` → khởi tạo progress
+- [ ] Consume `user_registered` → initialize progress
 - [ ] `GET /progress/me`, `GET /leaderboard`
 
-### Phase 4 — SRS Service (1.5 tuần)
-- [ ] Cài đặt & unit-test thuật toán SM-2
+### Phase 4 — SRS Service (1.5 weeks)
+- [ ] Implement & unit-test the SM-2 algorithm
 - [ ] Consume `quiz_completed` → upsert `srs_cards`
 - [ ] `GET /srs/due`, `POST /srs/answer`
 
-### Phase 5 — Media Service (1 tuần)
-- [ ] Tích hợp TTS provider + upload R2 + cache
+### Phase 5 — Media Service (1 week)
+- [ ] Integrate TTS provider + upload to R2 + caching
 - [ ] `GET /media/audio` (redirect/stream) + batch preload
 
-### Phase 6 — Hoàn thiện (1 tuần)
-- [ ] DLQ + idempotency cho consumers
-- [ ] Rate-limit ở gateway, integration test luồng `quiz_completed` end-to-end
-- [ ] OpenAPI docs mỗi service, README chạy local
+### Phase 6 — Finishing touches (1 week)
+- [ ] DLQ + idempotency for consumers
+- [ ] Rate limiting at the gateway, end-to-end integration test of the `quiz_completed` flow
+- [ ] OpenAPI docs per service, README for running locally
 
 ---
 
-## 5. Thứ tự build đề xuất
+## 5. Suggested build order
 `Infra (P0)` → `Auth (P1)` → `Content (P2)` → `Progress (P3)` → `SRS (P4)` → `Media (P5)`.
-Lý do: Content phát event là trung tâm; có Auth + Content rồi mới test được flow `quiz_completed` cho Progress & SRS. Media độc lập, làm cuối hoặc song song.
+Reason: Content is the central event publisher; only once Auth + Content exist can we test the `quiz_completed` flow for Progress & SRS. Media is independent — do it last or in parallel.
 
 ---
 
-## 6. Câu hỏi mở (cần chốt)
-1. **Real-time 1vs1** (thách đấu từ vựng): nếu làm → thêm **ExpressJS + Socket.io** service riêng (matchmaking + battle state qua Redis Pub/Sub). Đây là "đất diễn" cho phần khó kỹ thuật hệ thống.
-2. **SRS dùng ExpressJS hay NestJS?** Plan này chọn **ExpressJS** (tự do code thuật toán) đúng theo gợi ý; nếu muốn chuẩn hóa DI/validation thì chuyển NestJS.
-3. Media trả **R2 URL trực tiếp** (rẻ, cache CDN tốt) hay **stream qua service** (kiểm soát hơn)? Đề xuất redirect URL.
-4. Có cần **BFF** gộp `home` (progress + courses) để giảm round-trip cho mobile không?
-5. TTS provider chốt Google hay Azure? (ảnh hưởng SDK + chi phí).
+## 6. Open questions (to be decided)
+1. **Real-time 1vs1** (vocabulary duel): if we build it → add a dedicated **ExpressJS + Socket.io** service (matchmaking + battle state via Redis Pub/Sub). This is the "playground" for the hard systems-engineering part.
+2. **Should SRS use ExpressJS or NestJS?** This plan chooses **ExpressJS** (freedom to code the algorithm) per the suggestion; if you want standardized DI/validation, switch to NestJS.
+3. Should Media return the **R2 URL directly** (cheap, good CDN caching) or **stream through the service** (more control)? We recommend redirecting to the URL.
+4. Do we need a **BFF** that combines `home` (progress + courses) to reduce round-trips for mobile?
+5. Is the TTS provider Google or Azure? (affects SDK + cost).

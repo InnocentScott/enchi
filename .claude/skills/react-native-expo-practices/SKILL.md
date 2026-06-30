@@ -5,50 +5,50 @@ description: Best practices for the EnChi mobile app (React Native + Expo + Type
 
 # React Native + Expo Practices (EnChi mobile)
 
-Client duy nhất. Gọi backend qua API Gateway. TS strict, kiến trúc feature-based.
+The single client. Calls the backend through the API Gateway. TS strict, feature-based architecture.
 
-## Cấu trúc (feature-based)
+## Structure (feature-based)
 ```
 src/
-├── api/         # client.ts (axios + JWT refresh) + endpoints/ theo service
-├── features/<name>/  # screens + hooks + components riêng của feature
-├── components/  # UI dùng chung
-├── store/       # zustand (CHỈ client state: auth, session, UI)
-├── hooks/       # hook dùng chung
+├── api/         # client.ts (axios + JWT refresh) + endpoints/ per service
+├── features/<name>/  # screens + hooks + components specific to the feature
+├── components/  # shared UI
+├── store/       # zustand (client state ONLY: auth, session, UI)
+├── hooks/       # shared hooks
 └── lib/         # queryClient, theme, env
 ```
 
-## State — tách bạch rõ ràng (quan trọng)
-- **Server state = TanStack Query.** Mọi dữ liệu từ backend (courses, lessons, progress, due cards, leaderboard) dùng `useQuery`/`useMutation`. KHÔNG nhét vào Zustand.
-- **Client state = Zustand.** Chỉ: trạng thái auth (đã đăng nhập?), session làm bài tạm, toggle UI.
-- Query key có cấu trúc: `['progress','me']`, `['srs','due']`, `['courses']`. Sau `submitQuiz` → `invalidateQueries` cho `['progress','me']`, `['srs','due']`, `['leaderboard']`.
-- Optimistic update cho XP/streak khi submit, rollback `onError`.
+## State — keep it clearly separated (important)
+- **Server state = TanStack Query.** All data from the backend (courses, lessons, progress, due cards, leaderboard) uses `useQuery`/`useMutation`. Do NOT stuff it into Zustand.
+- **Client state = Zustand.** Only: auth state (logged in?), the in-progress quiz session, UI toggles.
+- Structured query keys: `['progress','me']`, `['srs','due']`, `['courses']`. After `submitQuiz` → `invalidateQueries` for `['progress','me']`, `['srs','due']`, `['leaderboard']`.
+- Optimistic update for XP/streak on submit, rollback `onError`.
 
 ## Networking
-- Dùng `src/api/client.ts` (đã có): axios + interceptor đính `Bearer` + tự refresh khi 401 (single-flight). Base URL từ `EXPO_PUBLIC_API_URL` → gateway.
-- Token lưu `expo-secure-store` (KHÔNG AsyncStorage cho token). Không log token.
-- Mỗi service một file trong `api/endpoints/`; component không gọi `axios` trực tiếp.
+- Use `src/api/client.ts` (already present): axios + an interceptor that attaches `Bearer` and auto-refreshes on 401 (single-flight). Base URL from `EXPO_PUBLIC_API_URL` → gateway.
+- Store the token in `expo-secure-store` (NOT AsyncStorage for the token). Do not log the token.
+- One file per service in `api/endpoints/`; components never call `axios` directly.
 
 ## Forms & validation
-- `react-hook-form` + `zod` (`zodResolver`). Mirror ràng buộc của DTO backend (email, độ dài mật khẩu) để fail sớm ở client.
+- `react-hook-form` + `zod` (`zodResolver`). Mirror the backend DTO constraints (email, password length) to fail early on the client.
 
 ## Navigation
-- React Navigation với **param list typed** (`type RootStackParamList`). Không truyền param không kiểu.
+- React Navigation with a **typed param list** (`type RootStackParamList`). Do not pass untyped params.
 
 ## Performance
-- Danh sách dài (từ vựng, leaderboard): `FlatList`/`FlashList` với `keyExtractor`, `getItemLayout` khi item cố định; tránh inline function nặng trong `renderItem`.
-- `React.memo` cho item; `useCallback`/`useMemo` đúng chỗ (không lạm dụng).
-- Animation gamification (XP bar, streak, confetti): **Reanimated** (chạy trên UI thread), không animate bằng `setState` mỗi frame.
+- Long lists (vocabulary, leaderboard): `FlatList`/`FlashList` with `keyExtractor`, plus `getItemLayout` when items have a fixed size; avoid heavy inline functions in `renderItem`.
+- `React.memo` for items; `useCallback`/`useMemo` where appropriate (do not overuse).
+- Gamification animations (XP bar, streak, confetti): **Reanimated** (runs on the UI thread), do not animate via `setState` every frame.
 
 ## Audio (expo-av)
-- Phát file TTS từ Media Service. Cache theo `text+lang` bằng `expo-file-system`; preload audio của bài học khi mở để không gọi lại Media.
-- Unload `Sound` khi rời màn (tránh rò bộ nhớ).
+- Play TTS files from the Media Service. Cache by `text+lang` with `expo-file-system`; preload a lesson's audio when it opens so the Media Service is not called again.
+- Unload the `Sound` when leaving the screen (avoid memory leaks).
 
-## UX trạng thái
-- Mỗi màn xử lý đủ loading / empty / error (dùng trạng thái của TanStack Query). Có skeleton cho màn chính.
+## UX states
+- Every screen handles loading / empty / error properly (using TanStack Query's states). Provide a skeleton for the main screens.
 
 ## Visual design
-- Khi cần làm màn hình "đẹp"/branding, **load thêm skill `design-taste-frontend`** và áp dụng.
+- When a screen needs to look "polished"/on-brand, **also load the `design-taste-frontend` skill** and apply it.
 
-## Anti-patterns (tránh)
-- Server state trong Zustand; gọi axios trong component; token trong AsyncStorage/log; `any`; animate qua state; quên unload audio; danh sách dài dùng `.map` trong `ScrollView`.
+## Anti-patterns (avoid)
+- Server state in Zustand; calling axios inside a component; token in AsyncStorage/logs; `any`; animating via state; forgetting to unload audio; long lists using `.map` inside a `ScrollView`.

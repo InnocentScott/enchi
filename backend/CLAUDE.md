@@ -1,6 +1,6 @@
 # EnChi Backend — Rules
 
-Polyglot microservices. Đọc cùng `../CLAUDE.md` (invariants + build order). Thiết kế: `../plan_backend.md`.
+Polyglot microservices. Read alongside `../CLAUDE.md` (invariants + build order). Design: `../plan_backend.md`.
 
 ## Services & ports
 | Service | Tech | Port | DB | Skill |
@@ -11,14 +11,14 @@ Polyglot microservices. Đọc cùng `../CLAUDE.md` (invariants + build order). 
 | srs-service | Express | 8004 | `srs_db` | `express-typescript-practices` |
 | media-service | Go | 8005 | (R2, no PG) | `golang-backend-practices` |
 
-> **Trước khi sửa một service, load skill ở cột phải.**
+> **Before modifying a service, load the skill in the right-hand column.**
 
-## Quy tắc bắt buộc
-- **DB-per-service**, không JOIN/khoá ngoại xuyên service. Liên kết qua ID + event.
-- Client không gọi thẳng service — luôn qua gateway (Traefik, port 80). Gateway verify JWT (ForwardAuth → `auth-service/auth/verify`) và set `X-User-Id`.
-- Event qua RabbitMQ `learning.events` (topic). Payload **phải** validate theo `libs/contracts/events/*.schema.json`. Đính `eventId` (uuid) + `occurredAt`; consumer **idempotent** theo `eventId`.
-- Secret qua `.env` (gitignored). Đọc qua config, fail-fast nếu thiếu.
-- Mỗi service: `GET /healthz` + error envelope `{code,message}`.
+## Mandatory rules
+- **DB-per-service**, no cross-service JOINs or foreign keys. Link via ID + event.
+- Clients never call a service directly — always go through the gateway (Traefik, port 80). The gateway verifies the JWT (ForwardAuth → `auth-service/auth/verify`) and sets `X-User-Id`.
+- Events go through RabbitMQ `learning.events` (topic). Payloads **must** validate against `libs/contracts/events/*.schema.json`. Attach `eventId` (uuid) + `occurredAt`; consumers are **idempotent** on `eventId`.
+- Secrets via `.env` (gitignored). Read through config, fail-fast if missing.
+- Every service: `GET /healthz` + error envelope `{code,message}`.
 
 ## Event map
 | Event | routing key | Producer | Consumers |
@@ -26,8 +26,8 @@ Polyglot microservices. Đọc cùng `../CLAUDE.md` (invariants + build order). 
 | `user_registered` | `user.registered` | auth | progress |
 | `quiz_completed` | `quiz.completed` | content | progress, srs |
 
-## Chạy / thêm dependency
-- Toàn bộ: `cp .env.example .env && docker compose up -d` (cần Docker).
-- Go service: `cd services/<svc> && go mod tidy` (scaffold đang stdlib-only).
+## Running / adding a dependency
+- Everything: `cp .env.example .env && docker compose up -d` (requires Docker).
+- Go service: `cd services/<svc> && go mod tidy` (the scaffold is currently stdlib-only).
 - Node service: `cd services/<svc> && npm install`.
-- Migration phải versioned (golang-migrate cho Go, Prisma cho content). Không tạo schema lúc runtime.
+- Migrations must be versioned (golang-migrate for Go, Prisma for content). Do not create schemas at runtime.

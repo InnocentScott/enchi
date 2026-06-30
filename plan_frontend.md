@@ -1,49 +1,49 @@
-# 📱 Plan Frontend — App Học Ngôn Ngữ (React Native)
+# 📱 Frontend Plan — Language Learning App (React Native)
 
-> Bám theo kiến trúc trong `implementation_plan_learning_app.md`. App mobile là client duy nhất, giao tiếp với backend qua **REST API** (đi qua API Gateway / BFF — xem `plan_backend.md`).
+> Following the architecture in `implementation_plan_learning_app.md`. The mobile app is the only client and communicates with the backend via **REST API** (through the API Gateway / BFF — see `plan_backend.md`).
 
 ---
 
 ## 1. Tech Stack
 
-| Hạng mục | Lựa chọn | Lý do |
+| Category | Choice | Reason |
 |---|---|---|
-| Framework | **React Native + Expo (managed)** + **TypeScript** | Tốc độ build nhanh, OTA update, hỗ trợ audio/asset sẵn — hợp app học tập |
-| Navigation | **React Navigation** (native-stack + bottom-tabs) | Tiêu chuẩn de-facto |
-| Server state | **TanStack Query** (React Query) | Cache, retry, invalidation cho dữ liệu bài học/quiz |
-| Client state | **Zustand** | Nhẹ cho auth state, UI state, session làm bài |
-| HTTP | **Axios** + interceptor đính JWT & refresh token | Tập trung logic gọi API |
-| Auth storage | **expo-secure-store** | Lưu access/refresh token an toàn |
-| Audio (TTS) | **expo-av** | Phát file audio từ Media Service (Cloudflare R2) |
-| Animation | **react-native-reanimated** + **moti** | XP bar, streak flame, confetti — yếu tố gamification |
-| Form & validate | **react-hook-form** + **zod** | Đăng nhập/đăng ký, mirror DTO của backend |
-| i18n | **i18next** | App đa ngôn ngữ (Anh/Trung), tách UI text |
-| Lint/format | ESLint + Prettier + TypeScript strict | Chất lượng code |
+| Framework | **React Native + Expo (managed)** + **TypeScript** | Fast build speed, OTA updates, built-in audio/asset support — a good fit for a learning app |
+| Navigation | **React Navigation** (native-stack + bottom-tabs) | The de-facto standard |
+| Server state | **TanStack Query** (React Query) | Caching, retries, and invalidation for lesson/quiz data |
+| Client state | **Zustand** | Lightweight for auth state, UI state, and the quiz session |
+| HTTP | **Axios** + interceptor attaching JWT & refresh token | Centralized API-call logic |
+| Auth storage | **expo-secure-store** | Securely store the access/refresh tokens |
+| Audio (TTS) | **expo-av** | Play audio files from the Media Service (Cloudflare R2) |
+| Animation | **react-native-reanimated** + **moti** | XP bar, streak flame, confetti — gamification elements |
+| Form & validation | **react-hook-form** + **zod** | Login/registration, mirroring the backend DTOs |
+| i18n | **i18next** | Multilingual app (English/Chinese), separating out UI text |
+| Lint/format | ESLint + Prettier + TypeScript strict | Code quality |
 
-> Nếu sau này cần native module ngoài Expo SDK (vd. background audio nâng cao) → cân nhắc `expo prebuild` (bare workflow).
+> If we later need a native module outside the Expo SDK (e.g. advanced background audio) → consider `expo prebuild` (bare workflow).
 
 ---
 
-## 2. Cấu trúc thư mục (`enchi/mobile/`)
+## 2. Directory structure (`enchi/mobile/`)
 
-> `enchi/` là umbrella chứa 2 repo: `mobile/` (file này) và `backend/` (xem `plan_backend.md`).
+> `enchi/` is the umbrella containing 2 repos: `mobile/` (this file) and `backend/` (see `plan_backend.md`).
 
 ```text
 enchi/mobile/
-├── app/                    # nếu dùng expo-router; hoặc src/navigation nếu React Navigation thuần
+├── app/                    # if using expo-router; or src/navigation if plain React Navigation
 ├── src/
-│   ├── api/                # axios client + 1 file/service: auth, content, progress, srs, media
+│   ├── api/                # axios client + 1 file per service: auth, content, progress, srs, media
 │   │   ├── client.ts       # axios instance + interceptors (JWT, refresh, error)
 │   │   └── endpoints/
 │   ├── features/
 │   │   ├── auth/           # login, register, splash, guard
-│   │   ├── courses/        # danh sách khóa học → bài học
-│   │   ├── lesson/         # màn học từ vựng + phát audio
-│   │   ├── quiz/           # multiple-choice, matching; nộp kết quả
-│   │   ├── review/         # SRS — "Ôn tập hôm nay"
+│   │   ├── courses/        # course list → lessons
+│   │   ├── lesson/         # vocabulary learning screen + audio playback
+│   │   ├── quiz/           # multiple-choice, matching; submit results
+│   │   ├── review/         # SRS — "Review Today"
 │   │   ├── progress/       # XP, streak, profile
-│   │   └── leaderboard/    # bảng xếp hạng
-│   ├── components/         # UI tái sử dụng (Button, Card, ProgressBar, AudioButton)
+│   │   └── leaderboard/    # leaderboard
+│   ├── components/         # reusable UI (Button, Card, ProgressBar, AudioButton)
 │   ├── store/              # zustand stores (authStore, sessionStore)
 │   ├── hooks/              # useAuth, useAudioPlayer, useReviewQueue
 │   ├── lib/                # query client, theme, constants
@@ -55,73 +55,73 @@ enchi/mobile/
 
 ---
 
-## 3. Bản đồ màn hình ↔ Backend service
+## 3. Screen ↔ Backend service map
 
-| Màn hình | Service gọi tới | Endpoint (dự kiến) |
+| Screen | Service called | Endpoint (planned) |
 |---|---|---|
 | Splash / Auth guard | Auth | `POST /auth/refresh` |
-| Đăng ký / Đăng nhập | Auth | `POST /auth/register`, `POST /auth/login` |
+| Register / Login | Auth | `POST /auth/register`, `POST /auth/login` |
 | Home / Profile | Progress | `GET /progress/me` (XP, streak) |
-| Danh sách khóa học | Content | `GET /courses` |
-| Chi tiết bài học (từ vựng) | Content + Media | `GET /lessons/:id`, `GET /media/audio?text=` |
-| Làm Quiz | Content | `GET /quizzes/:lessonId`, `POST /quizzes/:id/submit` |
-| Ôn tập hôm nay (SRS) | SRS | `GET /srs/due`, `POST /srs/answer` |
+| Course list | Content | `GET /courses` |
+| Lesson detail (vocabulary) | Content + Media | `GET /lessons/:id`, `GET /media/audio?text=` |
+| Take Quiz | Content | `GET /quizzes/:lessonId`, `POST /quizzes/:id/submit` |
+| Review Today (SRS) | SRS | `GET /srs/due`, `POST /srs/answer` |
 | Leaderboard | Progress | `GET /leaderboard?scope=global` |
 
-> Sau khi `POST /quizzes/:id/submit`, backend bắn event `quiz_completed` qua RabbitMQ → Progress cộng XP, SRS cập nhật lịch ôn. FE chỉ cần **invalidate** các query `progress/me`, `srs/due`, `leaderboard` để refetch.
+> After `POST /quizzes/:id/submit`, the backend fires a `quiz_completed` event over RabbitMQ → Progress adds XP, SRS updates the review schedule. The FE just needs to **invalidate** the `progress/me`, `srs/due`, and `leaderboard` queries to refetch.
 
 ---
 
-## 4. Các vấn đề kỹ thuật cần xử lý
+## 4. Technical issues to handle
 
-- **JWT refresh flow:** access token ngắn hạn + refresh token; axios interceptor tự refresh khi 401, queue request đang chờ.
-- **Audio caching:** cache file TTS theo `text+lang` (expo-file-system) để không gọi lại Media Service; preload audio của bài học khi mở.
-- **Offline-first cho Review:** prefetch hàng đợi SRS `due` lúc mở app; cho phép trả lời offline rồi sync (optimistic + retry queue) — tùy phase.
-- **Optimistic UI:** khi submit quiz/answer, cập nhật XP & streak ngay, reconcile khi server trả về.
-- **Gamification:** XP progress bar, streak flame, animation "lên level", confetti khi hoàn thành — dùng reanimated.
+- **JWT refresh flow:** short-lived access token + refresh token; the axios interceptor automatically refreshes on a 401 and queues the pending requests.
+- **Audio caching:** cache TTS files by `text+lang` (expo-file-system) to avoid calling the Media Service again; preload a lesson's audio when it opens.
+- **Offline-first for Review:** prefetch the SRS `due` queue when the app opens; allow answering offline and syncing later (optimistic + retry queue) — depending on the phase.
+- **Optimistic UI:** when submitting a quiz/answer, update XP & streak immediately and reconcile when the server responds.
+- **Gamification:** XP progress bar, streak flame, "level up" animation, confetti on completion — using reanimated.
 
 ---
 
-## 5. Lộ trình triển khai (Phases)
+## 5. Implementation roadmap (Phases)
 
-### Phase 0 — Khởi tạo (0.5 tuần)
+### Phase 0 — Bootstrap (0.5 week)
 - [ ] Init Expo + TypeScript strict, ESLint/Prettier
-- [ ] Cấu hình React Navigation (stack + tabs), theme, i18n skeleton
+- [ ] Configure React Navigation (stack + tabs), theme, i18n skeleton
 - [ ] Axios client + TanStack Query provider + Zustand auth store
-- [ ] Mock API layer (MSW hoặc json stub) để FE chạy độc lập với BE
+- [ ] Mock API layer (MSW or json stub) so the FE can run independently of the BE
 
-### Phase 1 — Auth (1 tuần)
-- [ ] Màn Splash + auth guard (kiểm tra token)
-- [ ] Đăng ký / Đăng nhập (react-hook-form + zod)
-- [ ] Lưu token (secure-store), interceptor refresh
-- [ ] Profile cơ bản
+### Phase 1 — Auth (1 week)
+- [ ] Splash screen + auth guard (token check)
+- [ ] Register / Login (react-hook-form + zod)
+- [ ] Store tokens (secure-store), refresh interceptor
+- [ ] Basic profile
 
-### Phase 2 — Content & Lesson (1.5 tuần)
-- [ ] Danh sách khóa học → bài học
-- [ ] Màn học từ vựng + nút phát audio (expo-av) + caching
-- [ ] Component tái sử dụng (Card, AudioButton, ProgressBar)
+### Phase 2 — Content & Lesson (1.5 weeks)
+- [ ] Course list → lessons
+- [ ] Vocabulary learning screen + audio play button (expo-av) + caching
+- [ ] Reusable components (Card, AudioButton, ProgressBar)
 
-### Phase 3 — Quiz (1 tuần)
-- [ ] Quiz multiple-choice + matching
-- [ ] Submit kết quả, màn kết quả, optimistic XP
-- [ ] Invalidate progress/srs/leaderboard sau submit
+### Phase 3 — Quiz (1 week)
+- [ ] Multiple-choice + matching quizzes
+- [ ] Submit results, results screen, optimistic XP
+- [ ] Invalidate progress/srs/leaderboard after submit
 
-### Phase 4 — Progress, SRS Review, Leaderboard (1.5 tuần)
-- [ ] Home hiển thị XP + streak
-- [ ] Màn "Ôn tập hôm nay" (SRS due → answer)
-- [ ] Leaderboard (global, có thể thêm tab bạn bè)
-- [ ] Animation gamification
+### Phase 4 — Progress, SRS Review, Leaderboard (1.5 weeks)
+- [ ] Home displaying XP + streak
+- [ ] "Review Today" screen (SRS due → answer)
+- [ ] Leaderboard (global, with a possible friends tab)
+- [ ] Gamification animations
 
-### Phase 5 — Polish & Release (1 tuần)
-- [ ] Loading/empty/error states, skeleton
-- [ ] Offline review queue (nếu chọn làm)
-- [ ] Push notification nhắc ôn tập (expo-notifications) — *phụ thuộc quyết định backend*
-- [ ] EAS Build (Android trước), test trên thiết bị thật
+### Phase 5 — Polish & Release (1 week)
+- [ ] Loading/empty/error states, skeletons
+- [ ] Offline review queue (if we choose to build it)
+- [ ] Push notification reminders to review (expo-notifications) — *depends on a backend decision*
+- [ ] EAS Build (Android first), test on a real device
 
 ---
 
-## 6. Câu hỏi mở (cần chốt với backend)
-1. **Real-time** (thách đấu từ vựng 1vs1) — nếu có, FE cần thêm **Socket.io client** + màn matchmaking/battle. Đây là tính năng lớn, nên tách riêng phase.
-2. Định dạng & lifecycle JWT (thời hạn access/refresh) để khớp interceptor.
-3. Media Service trả về URL R2 trực tiếp hay stream qua gateway? Ảnh hưởng cách cache audio.
-4. Có cần BFF (Backend-for-Frontend) gộp call `home` (progress + courses) thành 1 request không, để giảm số round-trip lúc mở app?
+## 6. Open questions (to be settled with the backend)
+1. **Real-time** (1vs1 vocabulary duel) — if included, the FE needs to add a **Socket.io client** + matchmaking/battle screens. This is a large feature, so it should be split into its own phase.
+2. JWT format & lifecycle (access/refresh lifetimes) to match the interceptor.
+3. Does the Media Service return the R2 URL directly or stream through the gateway? This affects how audio is cached.
+4. Do we need a BFF (Backend-for-Frontend) that combines the `home` call (progress + courses) into a single request, to reduce the number of round-trips when the app opens?
